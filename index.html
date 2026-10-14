@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Door">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Office Door</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --fg:#f1f5f9; --muted:#94a3b8; --accent:#22c55e; --err:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100dvh; background:var(--bg); color:var(--fg);
+         font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         display:flex; flex-direction:column; align-items:center; justify-content:center;
+         padding:24px 16px env(safe-area-inset-bottom); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; }
+  .who { color:var(--muted); margin:0 0 40px; }
+  #open { width:220px; height:220px; border-radius:50%; border:0; cursor:pointer;
+          background:var(--accent); color:#052e16; font-size:26px; font-weight:700;
+          box-shadow:0 0 0 12px rgba(34,197,94,.15); transition:transform .1s, background .2s; }
+  #open:active { transform:scale(.96); }
+  #open:disabled { opacity:.6; }
+  #open.err { background:var(--err); color:#fff; box-shadow:0 0 0 12px rgba(239,68,68,.15); }
+  #status { min-height:24px; margin:32px 0 0; color:var(--muted); text-align:center; }
+  .links { margin-top:40px; display:flex; gap:20px; }
+  .links a, .links button { color:var(--muted); background:none; border:0; font:inherit; text-decoration:underline; cursor:pointer; }
+  form { width:100%; max-width:360px; background:var(--card); padding:20px; border-radius:16px; }
+  label { display:block; font-size:14px; color:var(--muted); margin:12px 0 4px; }
+  input { width:100%; padding:12px; border-radius:10px; border:1px solid #334155; background:var(--bg); color:var(--fg); font-size:16px; }
+  form button { width:100%; margin-top:20px; padding:14px; border:0; border-radius:10px; background:var(--accent); color:#052e16; font-weight:700; font-size:16px; }
+  .note { font-size:13px; color:var(--muted); margin-top:12px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+
+<section id="main" hidden>
+  <h1>Office Door</h1>
+  <p class="who" id="who"></p>
+  <button id="open" type="button">OPEN</button>
+  <p id="status"></p>
+  <div class="links">
+    <a id="direct" target="_blank" rel="noopener">Open in browser</a>
+    <button id="edit" type="button">Settings</button>
+  </div>
+</section>
+
+<section id="setup" hidden>
+  <form id="form">
+    <h1>Setup</h1>
+    <label for="username">Username</label>
+    <input id="username" autocomplete="off" required>
+    <label for="key">Key</label>
+    <input id="key" autocomplete="off" required>
+    <label for="token">Token</label>
+    <input id="token" type="password" autocomplete="off" required>
+    <button type="submit">Save</button>
+    <p class="note">Stored only on this device (localStorage). Nothing is saved in the code or on GitHub.</p>
+  </form>
+</section>
+
+<script>
+const ENDPOINT = 'https://access.tiketbas.my/';
+const STORE = 'officeDoor.creds';
+const $ = id => document.getElementById(id);
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORE)); } catch { return null; }
+}
+function save(c) {
+  try { localStorage.setItem(STORE, JSON.stringify(c)); } catch {}
+}
+function doorUrl(c) {
+  const u = new URL(ENDPOINT);
+  u.searchParams.set('username', c.username);
+  u.searchParams.set('key', c.key);
+  u.searchParams.set('token', c.token);
+  return u.toString();
+}
+
+// Allow one-time import: open the app with ?username=..&key=..&token=..
+// The values are saved locally and immediately stripped from the address bar.
+(function importFromQuery() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('username') && p.get('key') && p.get('token')) {
+    save({ username: p.get('username'), key: p.get('key'), token: p.get('token') });
+    history.replaceState(null, '', location.pathname);
+  }
+})();
+
+function showMain(c) {
+  $('setup').hidden = true;
+  $('main').hidden = false;
+  $('who').textContent = 'Signed in as ' + c.username;
+  $('direct').href = doorUrl(c);
+}
+function showSetup(c) {
+  $('main').hidden = true;
+  $('setup').hidden = false;
+  $('username').value = c?.username || '';
+  $('key').value = c?.key || '';
+  $('token').value = c?.token || '';
+}
+
+$('form').addEventListener('submit', e => {
+  e.preventDefault();
+  const c = { username: $('username').value.trim(), key: $('key').value.trim(), token: $('token').value.trim() };
+  save(c);
+  showMain(c);
+});
+$('edit').addEventListener('click', () => showSetup(load()));
+
+$('open').addEventListener('click', async () => {
+  const c = load();
+  if (!c) return showSetup(null);
+  const btn = $('open'), status = $('status');
+  btn.disabled = true;
+  btn.classList.remove('err');
+  btn.textContent = '…';
+  status.textContent = 'Sending…';
+  try {
+    // The door server does not send CORS headers, so the response is opaque.
+    // A resolved promise means the request reached the server.
+    await fetch(doorUrl(c), { mode: 'no-cors', cache: 'no-store' });
+    btn.textContent = 'SENT';
+    status.textContent = 'Request sent at ' + new Date().toLocaleTimeString();
+    if (navigator.vibrate) navigator.vibrate(80);
+  } catch (err) {
+    btn.classList.add('err');
+    btn.textContent = 'FAILED';
+    status.textContent = 'Could not reach the door server. Check your connection.';
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'OPEN'; btn.classList.remove('err'); }, 2500);
+});
+
+const creds = load();
+creds ? showMain(creds) : showSetup(null);
+</script>
+</body>
+</html>
