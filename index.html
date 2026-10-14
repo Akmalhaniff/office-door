@@ -169,7 +169,7 @@ function renderDoors(c){
   const fav = getFav();
   const order = [...DOORS].sort((a,b)=> (a.id===fav?-1:0) - (b.id===fav?-1:0));
   $('doors').innerHTML = order.map(d=>`
-    <a class="door ${d.id}" href="${url}" target="_blank" rel="noopener" data-id="${d.id}">
+    <a class="door ${d.id}" href="${url}" rel="noopener" data-id="${d.id}">
       <button class="fav ${d.id===fav?'on':''}" data-fav="${d.id}" title="Make default" aria-label="Make default">★</button>
       <div class="ic">${d.svg}</div>
       <div class="tx"><b>${d.title}</b><span>${d.sub}</span></div>
